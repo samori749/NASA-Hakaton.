@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ares Horizon: Station Alpha - NASA Mars Survival Simulator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome for UI Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background-color: #050508;
+            color: #00ffcc;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        h1, h2, h3, .hud-title {
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 2px;
+        }
+
+        /* Sci-Fi Scanlines & Vignette */
+        .sci-fi-overlay {
+            pointer-events: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%;
+            z-index: 50;
+        }
+
+        .vignette {
+            pointer-events: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8), inset 0 0 40px rgba(0, 0, 0, 0.6);
+            z-index: 49;
+        }
+
+        /* Custom Scrollbar for HUD logs */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 20, 30, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 204, 0.4);
+            border-radius: 2px;
+        }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="h-full relative">
+
+    <!-- Visual Overlays -->
+    <div class="sci-fi-overlay"></div>
+    <div class="vignette"></div>
+
+    <!-- Three.js Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- START / INTRO SCREEN -->
+    <div id="intro-screen" class="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-6">
+        <div class="max-w-2xl w-full bg-slate-900/80 border-2 border-cyan-500/50 rounded-xl p-8 shadow-[0_0_30px_rgba(0,255,204,0.2)] text-center relative overflow-hidden">
+            <div class="absolute -right-16 -top-16 text-cyan-500/10 text-9xl font-black pointer-events-none font-['Orbitron']">NASA</div>
+            <div class="flex items-center justify-center mb-4 space-x-3">
+                <i class="fa-solid fa-satellite-dish text-cyan-400 text-3xl animate-bounce"></i>
+                <span class="text-xs tracking-widest text-cyan-300 uppercase font-bold px-3 py-1 bg-cyan-950/80 rounded border border-cyan-500/40">NASA Space Apps Challenge Entry</span>
+            </div>
+            <h1 class="text-4xl md:text-5xl font-black text-white mb-2 tracking-wider">ARES HORIZON</h1>
+            <h2 class="text-xl text-cyan-400 mb-6 font-semibold">STATION ALPHA // MARS SURVIVAL SIMULATOR</h2>
+            
+            <div class="text-left bg-black/50 p-4 rounded-lg border border-slate-700 mb-6 text-sm text-slate-300 space-y-2">
+                <p><strong class="text-cyan-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i> SITUATION:</strong> A severe Category 5 Martian dust storm has breached hull sectors and crippled station automation. You are the sole surviving aerospace engineer.</p>
+                <p><strong class="text-cyan-400"><i class="fa-solid fa-bullseye mr-1"></i> OBJECTIVE:</strong> Survive for <span class="text-white font-bold">5 Martian Sols</span> OR fully repair the <span class="text-white font-bold">Deep Space Communications Array</span> to signal Earth.</p>
+                <p><strong class="text-cyan-400"><i class="fa-solid fa-gamepad mr-1"></i> CONTROLS:</strong> WASD to Move | MOUSE to Look | <span class="bg-slate-800 px-1.5 py-0.5 rounded text-cyan-300 font-mono">E</span> to Interact / Repair | <span class="bg-slate-800 px-1.5 py-0.5 rounded text-cyan-300 font-mono">SPACE</span> to Low-G Float</p>
+            </div>
+
+            <button id="start-btn" class="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-['Orbitron'] font-bold text-lg rounded-lg shadow-lg shadow-cyan-500/30 transition-all duration-300 border border-cyan-400/50 flex items-center justify-center space-x-3 cursor-pointer">
+                <i class="fa-solid fa-power-off"></i>
+                <span>INITIALIZE HABITAT SYSTEM</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- GAMEPLAY HUD (Hidden initially) -->
+    <div id="hud" class="absolute inset-0 z-30 pointer-events-none hidden flex flex-col justify-between p-6">
+        <!-- TOP HUD -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Left: Resource Meters -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-cyan-500/30 rounded-xl p-4 w-80 shadow-lg space-y-3 pointer-events-auto">
+                <div class="flex justify-between items-center text-xs text-cyan-300 font-bold border-b border-cyan-900 pb-1">
+                    <span>STATION TELEMETRY</span>
+                    <span id="sol-counter" class="text-amber-400">SOL 1 / 5</span>
+                </div>
+                
+                <!-- Oxygen -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-cyan-400"><i class="fa-solid fa-lungs mr-1"></i> OXYGEN (O₂)</span>
+                        <span id="o2-val" class="text-cyan-200">100%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-cyan-900">
+                        <div id="o2-bar" class="bg-cyan-400 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Power -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-amber-400"><i class="fa-solid fa-bolt mr-1"></i> POWER GRID</span>
+                        <span id="power-val" class="text-amber-200">100%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-amber-900/50">
+                        <div id="power-bar" class="bg-amber-400 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Hull Integrity -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-bold">
+                        <span class="text-rose-400"><i class="fa-solid fa-shield-halved mr-1"></i> HULL INTEGRITY</span>
+                        <span id="hull-val" class="text-rose-200">100%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-rose-900/50">
+                        <div id="hull-bar" class="bg-rose-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Objective & Comms Progress -->
+            <div class="bg-slate-900/80 backdrop-blur-md border border-cyan-500/30 rounded-xl p-4 w-72 shadow-lg space-y-3 pointer-events-auto">
+                <div class="text-xs text-cyan-300 font-bold border-b border-cyan-900 pb-1 flex justify-between items-center">
+                    <span>MISSION OBJECTIVES</span>
+                    <i class="fa-solid fa-bullseye text-cyan-400"></i>
+                </div>
+                <div class="text-xs space-y-2 text-slate-300">
+                    <div id="obj-survive" class="flex items-center space-x-2">
+                        <i class="fa-regular fa-square text-cyan-400"></i>
+                        <span>Survive 5 Sols (<span id="sol-progress">0</span>/5)</span>
+                    </div>
+                    <div id="obj-comms" class="flex items-center space-x-2">
+                        <i class="fa-regular fa-square text-cyan-400"></i>
+                        <span>Repair Comms Array (<span id="comms-repaired">0</span>/3)</span>
+                    </div>
+                </div>
+                <!-- Action / Audio Toggle -->
+                <div class="pt-2 border-t border-cyan-900/50 flex justify-between items-center">
+                    <button id="audio-toggle" class="px-3 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 rounded border border-cyan-500/40 text-xs font-bold flex items-center space-x-1 cursor-pointer">
+                        <i class="fa-solid fa-volume-high" id="audio-icon"></i>
+                        <span id="audio-text">Audio ON</span>
+                    </button>
+                    <span class="text-[10px] text-slate-400 font-mono">0.38g MARS</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER: Crosshair & Interaction Prompt -->
+        <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <!-- Crosshair -->
+            <div class="w-2 h-2 rounded-full bg-cyan-400/80 shadow-[0_0_8px_rgba(0,255,204,0.8)]"></div>
+            
+            <!-- Interaction Popup -->
+            <div id="interaction-prompt" class="mt-12 bg-slate-900/90 border border-cyan-400 px-4 py-2 rounded-lg text-cyan-300 text-sm font-bold opacity-0 transition-opacity duration-200 shadow-[0_0_15px_rgba(0,255,204,0.3)]">
+                [E] INTERACT WITH TERMINAL
+            </div>
+        </div>
+
+        <!-- BOTTOM HUD: Notification Log -->
+        <div class="w-full flex justify-center pb-2">
+            <div id="log-container" class="bg-slate-950/80 backdrop-blur-md border border-cyan-500/20 rounded-lg px-4 py-2 w-full max-w-xl text-xs text-cyan-400 shadow-lg h-16 overflow-hidden flex flex-col justify-end">
+                <div class="text-slate-500 font-mono">[00:00] System initialized. Dust storm severity: CRITICAL.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPAIR MINIGAME MODAL -->
+    <div id="minigame-modal" class="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center hidden pointer-events-auto">
+        <div class="bg-slate-900 border-2 border-cyan-500 rounded-xl p-8 max-w-md w-full shadow-[0_0_40px_rgba(0,255,204,0.3)] relative">
+            <div class="flex justify-between items-center mb-6 border-b border-cyan-900 pb-3">
+                <h3 id="minigame-title" class="text-lg font-bold text-white tracking-wider flex items-center space-x-2">
+                    <i class="fa-solid fa-microchip text-cyan-400"></i>
+                    <span>SYSTEM REPAIR PROTOCOL</span>
+                </h3>
+                <button id="close-minigame" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <p id="minigame-desc" class="text-xs text-slate-300 mb-6">Align circuit nodes in correct sequence to restore subsystem functionality.</p>
+            
+            <!-- Dynamic Minigame Content Area -->
+            <div id="minigame-body" class="space-y-4 mb-6">
+                <!-- Populated via JS -->
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button id="minigame-cancel" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold">ABORT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER / VICTORY MODAL -->
+    <div id="end-screen" class="absolute inset-0 z-60 bg-black/95 backdrop-blur-lg flex items-center justify-center hidden pointer-events-auto p-6">
+        <div class="max-w-lg w-full bg-slate-900 border-2 border-cyan-500 rounded-2xl p-8 text-center shadow-[0_0_60px_rgba(0,255,204,0.4)]">
+            <div id="end-icon" class="text-6xl text-cyan-400 mb-4">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 id="end-title" class="text-3xl font-black text-white mb-2 tracking-wider">MISSION SUCCESS</h2>
+            <p id="end-message" class="text-sm text-slate-300 mb-6">You successfully survived the Martian storm and contacted Earth.</p>
+            
+            <button onclick="location.reload()" class="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-['Orbitron'] font-bold rounded-lg shadow-lg shadow-cyan-500/30 transition-all cursor-pointer">
+                RE-INITIALIZE SIMULATION
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN GAME SCRIPT -->
+    <script>
+        // --- AUDIO ENGINE (Web Audio API) ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+                this.ambientNode = null;
+            }
+
+            init() {
+                if (this.ctx) return;
+                try {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.startAmbientHum();
+                } catch(e) {
+                    console.log('Web Audio API not supported', e);
+                }
+            }
+
+            toggleAudio() {
+                this.enabled = !this.enabled;
+                if (this.ambientNode) {
+                    this.ambientNode.gain.gain.setValueAtTime(this.enabled ? 0.05 : 0, this.ctx.currentTime);
+                }
+                return this.enabled;
+            }
+
+            startAmbientHum() {
+                if (!this.ctx) return;
+                // Low drone for station atmosphere & storm wind
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                const filter = this.ctx.createBiquadFilter();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(55, this.ctx.currentTime); // Low A
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(150, this.ctx.currentTime);
+
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                this.ambientNode = { osc, gain };
+            }
+
+            playBeep(freq = 440, type = 'sine', duration = 0.1) {
+                if (!this.enabled || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+
+            playSuccess() {
+                if (!this.enabled || !this.ctx) return;
+                [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+                    setTimeout(() => this.playBeep(f, 'sine', 0.15), i * 100);
+                });
+            }
+
+            playError() {
+                if (!this.enabled || !this.ctx) return;
+                [200, 150].forEach((f, i) => {
+                    setTimeout(() => this.playBeep(f, 'sawtooth', 0.2), i * 120);
+                });
+            }
+        }
+
+        const soundEngine = new SoundEngine();
+
+        // --- GAME STATE & CONSTANTS ---
+        const gameState = {
+            active: false,
+            o2: 100,
+            power: 100,
+            hull: 100,
+            sol: 1,
+            solTimer: 0,
+            solDuration: 60, // 60 seconds per sol
+            commsRepairedCount: 0,
+            tasks: [],
+            won: false,
+            lost: false
+        };
+
+        // --- THREE.JS SCENE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a0a05); // Dusty Mars sky tint
+        scene.fog = new THREE.FogExp2(0x3d1508, 0.04);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xff5533, 0.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xff7744, 0.8);
+        dirLight.position.set(20, 40, 20);
+        scene.add(dirLight);
+
+        // --- PROCEDURAL ENVIRONMENT (STATION INTERIOR & EXTERIOR) ---
+        const interactables = [];
+
+        function buildStation() {
+            // Materials
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e222b, roughness: 0.3, metalness: 0.8 });
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfd5e0, roughness: 0.4, metalness: 0.5 });
+            const darkWallMat = new THREE.MeshStandardMaterial({ color: 0x11151c, roughness: 0.5, metalness: 0.9 });
+            const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xff3300, transparent: true, opacity: 0.3, roughness: 0.1, transmission: 0.9 });
+            const redTerrainMat = new THREE.MeshStandardMaterial({ color: 0xb53a1e, roughness: 0.9, metalness: 0.1 });
+
+            // --- CORRIDORS & MODULES ---
+            // Main Habitation Hallway (Z: -20 to 20, X: 0, Y: 0)
+            const corridorGroup = new THREE.Group();
+
+            // Floor
+            const floorGeo = new THREE.PlaneGeometry(6, 40);
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            corridorGroup.add(floor);
+
+            // Ceiling
+            const ceiling = new THREE.Mesh(floorGeo, darkWallMat);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.y = 4;
+            corridorGroup.add(ceiling);
+
+            // Walls (Left & Right)
+            const wallGeo = new THREE.PlaneGeometry(40, 4);
+            const wallLeft = new THREE.Mesh(wallGeo, wallMat);
+            wallLeft.position.set(-3, 2, 0);
+            wallLeft.rotation.y = Math.PI / 2;
+            corridorGroup.add(wallLeft);
+
+            const wallRight = new THREE.Mesh(wallGeo, wallMat);
+            wallRight.position.set(3, 2, 0);
+            wallRight.rotation.y = -Math.PI / 2;
+            corridorGroup.add(wallRight);
+
+            // --- CROSS MODULES (Engineering & Hydroponics & Airlock) ---
+            // Engineering Bay (Left wing at Z: -10)
+            createRoom(-10, -10, 8, 8, 'Engineering Bay', 'Power Generator', 0);
+            // Hydroponics Bay (Right wing at Z: 0)
+            createRoom(10, 0, 8, 8, 'Hydroponics Bay', 'Oxygen Scrubber', 1);
+            // Comms Array / Command Center (End of hallway Z: -18)
+            createRoom(0, -18, 8, 8, 'Comms Array', 'Communication Uplink', 2);
+            // Airlock (Entrance Z: 18)
+            createRoom(0, 16, 6, 6, 'Airlock', 'Hull Sealant', 3);
+
+            scene.add(corridorGroup);
+
+            // --- EXTERIOR MARS LANDSCAPE & DUST STORM ---
+            const groundGeo = new THREE.PlaneGeometry(300, 300, 32, 32);
+            const ground = new THREE.Mesh(groundGeo, redTerrainMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.1;
+            scene.add(ground);
+
+            // Distant rocks / mountains
+            for (let i = 0; i < 50; i++) {
+                const size = 3 + Math.random() * 8;
+                const rockGeo = new THREE.DodecahedronGeometry(size, 1);
+                const rock = new THREE.Mesh(rockGeo, redTerrainMat);
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 40 + Math.random() * 80;
+                rock.position.set(Math.cos(angle) * dist, size / 2 - 1, Math.sin(angle) * dist);
+                scene.add(rock);
+            }
+
+            // --- DUST PARTICLES ---
+            const particleCount = 1000;
+            const particleGeo = new THREE.BufferGeometry();
+            const particlePositions = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                particlePositions[i] = (Math.random() - 0.5) * 150;
+                particlePositions[i+1] = Math.random() * 30;
+                particlePositions[i+2] = (Math.random() - 0.5) * 150;
+            }
+            particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+            const particleMat = new THREE.PointsMaterial({ color: 0xff6633, size: 0.6, transparent: true, opacity: 0.6 });
+            const dustParticles = new THREE.Points(particleGeo, particleMat);
+            scene.add(dustParticles);
+            window.dustParticles = dustParticles;
+        }
+
+        function createRoom(x, z, width, depth, name, taskName, taskId) {
+            const roomGroup = new THREE.Group();
+            roomGroup.position.set(x, 0, z);
+
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x151922, roughness: 0.3 });
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.5 });
+            const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xff4400, transparent: true, opacity: 0.25, roughness: 0.1, transmission: 0.8 });
+
+            // Floor
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            roomGroup.add(floor);
+
+            // Terminal Console (Interactive Object)
+            const consoleGeo = new THREE.BoxGeometry(1.2, 1.2, 0.6);
+            const consoleMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
+            const consoleMesh = new THREE.Mesh(consoleGeo, consoleMat);
+            consoleMesh.position.set(0, 0.6, -depth/2 + 1);
+            consoleMesh.castShadow = true;
+            
+            // Glowing Screen on Console
+            const screenGeo = new THREE.PlaneGeometry(0.9, 0.5);
+            const screenMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+            const screen = new THREE.Mesh(screenGeo, screenMat);
+            screen.position.set(0, 0.9, -depth/2 + 0.69);
+            screen.rotation.y = Math.PI;
+            roomGroup.add(consoleMesh);
+            roomGroup.add(screen);
+
+            // Register Interactable Terminal
+            interactables.push({
+                mesh: consoleMesh,
+                position: new THREE.Vector3(x, 1, z - depth/2 + 1.5),
+                name: name,
+                taskName: taskName,
+                taskId: taskId,
+                repaired: false,
+                screen: screen
+            });
+
+            // Viewport window looking outside into dust storm
+            const windowFrame = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 0.2), wallMat);
+            windowFrame.position.set(0, 2, -depth/2);
+            const windowGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.6), glassMat);
+            windowGlass.position.set(0, 2, -depth/2 + 0.1);
+            roomGroup.add(windowFrame);
+            roomGroup.add(windowGlass);
+
+            scene.add(roomGroup);
+        }
+
+        buildStation();
+
+        // --- FIRST-PERSON CONTROLLER & PHYSICS ---
+        const moveState = { forward: false, backward: false, left: false, right: false, up: false };
+        let moveSpeed = 6.0;
+        const playerVelocity = new THREE.Vector3();
+        const playerPosition = new THREE.Vector3(0, 1.7, 12); // Start near airlock
+        camera.position.copy(playerPosition);
+
+        let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const PI_2 = Math.PI / 2;
+
+        window.addEventListener('keydown', (e) => {
+            if (!gameState.active) return;
+            switch(e.code) {
+                case 'KeyW': case 'ArrowUp': moveState.forward = true; break;
+                case 'KeyS': case 'ArrowDown': moveState.backward = true; break;
+                case 'KeyA': case 'ArrowLeft': moveState.left = true; break;
+                case 'KeyD': case 'ArrowRight': moveState.right = true; break;
+                case 'Space': moveState.up = true; break;
+                case 'KeyE': checkInteraction(); break;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            switch(e.code) {
+                case 'KeyW': case 'ArrowUp': moveState.forward = false; break;
+                case 'KeyS': case 'ArrowDown': moveState.backward = false; break;
+                case 'KeyA': case 'ArrowLeft': moveState.left = false; break;
+                case 'KeyD': case 'ArrowRight': moveState.right = false; break;
+                case 'Space': moveState.up = false; break;
+            }
+        });
+
+        // Pointer Lock for Mouse Look
+        const canvas = renderer.domElement;
+        canvas.addEventListener('click', () => {
+            if (gameState.active && document.pointerLockElement !== canvas) {
+                canvas.requestPointerLock();
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement !== canvas || !gameState.active) return;
+            const movementX = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
+            const movementY = e.movementY || e.mozMovementY || e.webkitMovementY || 0;
+
+            euler.y -= movementX * 0.002;
+            euler.x -= movementY * 0.002;
+            euler.x = Math.max(-PI_2, Math.min(PI_2, euler.x));
+            camera.quaternion.setFromEuler(euler);
+        });
+
+        // --- INTERACTION & RAYCASTING ---
+        const raycaster = new THREE.Raycaster();
+        const centerVector = new THREE.Vector2(0, 0);
+
+        function checkInteraction() {
+            raycaster.setFromCamera(centerVector, camera);
+            const intersects = raycaster.intersectObjects(interactables.map(i => i.mesh));
+
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                const interactable = interactables.find(i => i.mesh === hitMesh);
+                if (interactable && !interactable.repaired) {
+                    openMinigame(interactable);
+                } else if (interactable && interactable.repaired) {
+                    addLog(`System [${interactable.name}] is already fully operational.`);
+                    soundEngine.playBeep(600, 'sine', 0.1);
+                }
+            }
+        }
+
+        // --- MINIGAME LOGIC ---
+        let activeTerminal = null;
+
+        function openMinigame(interactable) {
+            activeTerminal = interactable;
+            document.getElementById('minigame-modal').classList.remove('hidden');
+            document.getElementById('minigame-title').innerHTML = `<i class="fa-solid fa-microchip text-cyan-400"></i> REPAIR: ${interactable.name}`;
+            document.getElementById('minigame-desc').innerText = `Perform sequence override to restore ${interactable.taskName}. Click nodes in ascending numerical order.`;
+
+            const body = document.getElementById('minigame-body');
+            body.innerHTML = '';
+
+            // Generate sequence matching minigame (4 nodes)
+            const grid = document.createElement('div');
+            grid.className = 'grid grid-cols-2 gap-4';
+            
+            let currentStep = 1;
+            const numbers = [1, 2, 3, 4].sort(() => Math.random() - 0.5);
+
+            numbers.forEach(num => {
+                const btn = document.createElement('button');
+                btn.className = 'py-6 bg-slate-800 hover:bg-cyan-950 border border-cyan-500/40 rounded-xl text-2xl font-bold text-cyan-400 transition-all cursor-pointer shadow-md';
+                btn.innerText = num;
+                btn.onclick = () => {
+                    if (num === currentStep) {
+                        soundEngine.playBeep(800 + num * 100, 'sine', 0.08);
+                        btn.className = 'py-6 bg-cyan-600 border border-cyan-300 rounded-xl text-2xl font-bold text-white shadow-[0_0_15px_rgba(0,255,204,0.6)]';
+                        btn.disabled = true;
+                        currentStep++;
+                        if (currentStep > 4) {
+                            // Completed successfully!
+                            completeRepair(activeTerminal);
+                        }
+                    } else {
+                        soundEngine.playError();
+                        btn.classList.add('bg-rose-950', 'border-rose-500', 'text-rose-400');
+                        setTimeout(() => {
+                            closeMinigameModal();
+                        }, 400);
+                    }
+                };
+                grid.appendChild(btn);
+            });
+
+            body.appendChild(grid);
+            if (document.pointerLockElement) document.exitPointerLock();
+        }
+
+        document.getElementById('close-minigame').onclick = closeMinigameModal;
+        document.getElementById('minigame-cancel').onclick = closeMinigameModal;
+
+        function closeMinigameModal() {
+            document.getElementById('minigame-modal').classList.add('hidden');
+            activeTerminal = null;
+        }
+
+        function completeRepair(terminal) {
+            terminal.repaired = true;
+            terminal.screen.material.color.setHex(0x00ff00); // Green glow
+            soundEngine.playSuccess();
+            closeMinigameModal();
+
+            if (terminal.taskId === 2) {
+                // Comms Array repaired
+                gameState.commsRepairedCount++;
+                document.getElementById('comms-repaired').innerText = gameState.commsRepairedCount;
+                if (gameState.commsRepairedCount >= 2) {
+                    triggerVictory("Deep Space Communications Array fully restored! Signal transmitted to NASA Earth Command.");
+                    return;
+                }
+            }
+
+            // Restore resources based on terminal
+            if (terminal.taskId === 0) {
+                gameState.power = Math.min(100, gameState.power + 30);
+                addLog(`Engineering Bay repaired. Power grid stabilized (+30%).`);
+            } else if (terminal.taskId === 1) {
+                gameState.o2 = Math.min(100, gameState.o2 + 35);
+                addLog(`Hydroponics scrubbers active. O2 levels restored (+35%).`);
+            } else if (terminal.taskId === 3) {
+                gameState.hull = Math.min(100, gameState.hull + 30);
+                addLog(`Airlock hull breach sealed (+30%).`);
+            }
+        }
+
+        // --- NOTIFICATION LOG ---
+        function addLog(msg) {
+            const logContainer = document.getElementById('log-container');
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = 'text-slate-300 font-mono text-[11px] truncate';
+            div.innerText = `[${time}] ${msg}`;
+            logContainer.prepend(div);
+            if (logContainer.children.length > 5) {
+                logContainer.lastChild.remove();
+            }
+        }
+
+        // --- GAME LOOP & STATE ENGINE ---
+        let clock = new THREE.Clock();
+
+        function startGame() {
+            soundEngine.init();
+            document.getElementById('intro-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            gameState.active = true;
+            addLog("Emergency protocols active. Life support running on auxiliary batteries.");
+            canvas.requestPointerLock();
+        }
+
+        document.getElementById('start-btn').onclick = startGame;
+        document.getElementById('audio-toggle').onclick = () => {
+            const enabled = soundEngine.toggleAudio();
+            document.getElementById('audio-text').innerText = enabled ? 'Audio ON' : 'Audio OFF';
+            document.getElementById('audio-icon').className = enabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+        };
+
+        function updateGame(delta) {
+            if (!gameState.active) return;
+
+            // Resource Decay (Survival pressure)
+            gameState.o2 -= delta * 0.4;
+            gameState.power -= delta * 0.35;
+            gameState.hull -= delta * 0.2;
+
+            // Sol Timer & Progression
+            gameState.solTimer += delta;
+            if (gameState.solTimer >= gameState.solDuration) {
+                gameState.solTimer = 0;
+                gameState.sol++;
+                document.getElementById('sol-counter').innerText = `SOL ${gameState.sol} / 5`;
+                document.getElementById('sol-progress').innerText = gameState.sol - 1;
+                addLog(`Sol ${gameState.sol - 1} ended. Martian dust storm intensity fluctuating.`);
+                soundEngine.playBeep(500, 'sine', 0.3);
+
+                if (gameState.sol > 5) {
+                    triggerVictory("Survived 5 Martian Sols! Habitat rescue crew has touched down.");
+                    return;
+                }
+            }
+
+            // Update UI Bars
+            document.getElementById('o2-bar').style.width = `${Math.max(0, gameState.o2)}%`;
+            document.getElementById('o2-val').innerText = `${Math.round(Math.max(0, gameState.o2))}%`;
+
+            document.getElementById('power-bar').style.width = `${Math.max(0, gameState.power)}%`;
+            document.getElementById('power-val').innerText = `${Math.round(Math.max(0, gameState.power))}%`;
+
+            document.getElementById('hull-bar').style.width = `${Math.max(0, gameState.hull)}%`;
+            document.getElementById('hull-val').innerText = `${Math.round(Math.max(0, gameState.hull))}%`;
+
+            // Check Defeat Conditions
+            if (gameState.o2 <= 0 || gameState.power <= 0 || gameState.hull <= 0) {
+                triggerDefeat("Critical station failure! Life support offline.");
+                return;
+            }
+
+            // --- MOVEMENT & COLLISION (Mars 0.38g low gravity feel) ---
+            const speed = moveSpeed * delta;
+            const dir = new THREE.Vector3();
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+            forward.y = 0; forward.normalize();
+            right.y = 0; right.normalize();
+
+            if (moveState.forward) dir.add(forward);
+            if (moveState.backward) dir.sub(forward);
+            if (moveState.right) dir.add(right);
+            if (moveState.left) dir.sub(right);
+            dir.normalize();
+
+            camera.position.addScaledVector(dir, speed);
+
+            // Simple station bounds enforcement (Keep player inside corridors)
+            camera.position.x = Math.max(-4.5, Math.min(11, camera.position.x));
+            camera.position.z = Math.max(-21, Math.min(18, camera.position.z));
+            camera.position.y = 1.7; // Fixed eye height
+
+            // Rotate dust particles for atmospheric storm effect
+            if (window.dustParticles) {
+                window.dustParticles.rotation.y += delta * 0.05;
+            }
+
+            // Raycast for Interaction Prompt
+            raycaster.setFromCamera(centerVector, camera);
+            const intersects = raycaster.intersectObjects(interactables.map(i => i.mesh));
+            const prompt = document.getElementById('interaction-prompt');
+            if (intersects.length > 0) {
+                const interactable = interactables.find(i => i.mesh === intersects[0].object);
+                if (interactable && !interactable.repaired) {
+                    prompt.innerText = `[E] REPAIR ${interactable.name.toUpperCase()}`;
+                    prompt.style.opacity = '1';
+                } else if (interactable && interactable.repaired) {
+                    prompt.innerText = `${interactable.name.toUpperCase()} [OPERATIONAL]`;
+                    prompt.style.opacity = '0.6';
+                }
+            } else {
+                prompt.style.opacity = '0';
+            }
+        }
+
+        function triggerVictory(msg) {
+            gameState.active = false;
+            if (document.pointerLockElement) document.exitPointerLock();
+            document.getElementById('end-screen').classList.remove('hidden');
+            document.getElementById('end-title').innerText = "MISSION SUCCESS";
+            document.getElementById('end-message').innerText = msg;
+            document.getElementById('end-icon').innerHTML = '<i class="fa-solid fa-trophy text-cyan-400"></i>';
+            soundEngine.playSuccess();
+        }
+
+        function triggerDefeat(msg) {
+            gameState.active = false;
+            if (document.pointerLockElement) document.exitPointerLock();
+            document.getElementById('end-screen').classList.remove('hidden');
+            document.getElementById('end-title').innerText = "SIMULATION FAILED";
+            document.getElementById('end-message').innerText = msg;
+            document.getElementById('end-icon').innerHTML = '<i class="fa-solid fa-skull text-rose-500"></i>';
+            soundEngine.playError();
+        }
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            updateGame(delta);
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Responsive window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
